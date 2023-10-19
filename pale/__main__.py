@@ -9,6 +9,7 @@ from bs4 import BeautifulSoup
 from pandas import DataFrame
 
 from .util import normalize
+from .Section import Section
 
 
 @group()
@@ -22,24 +23,11 @@ LINK_TEMPLATE = re.compile(r'\s*Link▶️\s*')
 TIMEOUT = 3600  # seconds
 
 
-@dataclass
-class Section:
-    header: BeautifulSoup
-    elements: tuple[BeautifulSoup]
-
-    @property
-    def title(self):
-        return normalize(self.header.text)
-
-    @property
-    def items(self):
-        return tuple(normalize(element.text) for element in self.elements)
-
-
 @main.command()
 @argument('path', type = str, default = 'assets/pale.tsv')
 def parse(path: str):
     # champions = ['kindred', 'jhin']
+    # champions = ['jhin']
     champions = ['kindred']
 
     i = 0
@@ -68,45 +56,51 @@ def parse(path: str):
 
         # for heading in bs.find_all('span', {'class': 'mw-headline'}):
 
-        sections = []
+        # sections = []
 
-        headings = bs.select('div.mw-parser-output > h2 > span.mw-headline')
-        heading_index = set()
+        # headings = bs.select('h2 > span.mw-headline')
+        # heading_index = set()
 
-        for heading in headings[::-1]:
-            # print('#', heading.text)
-            heading_index.add(heading)
+        # for heading in headings[::-1]:
+        #     # print('-', heading.text)
+        #     heading_index.add(heading)
 
-            subheadings = heading.find_all_next('span', {'class': 'mw-headline'})
+        #     subheadings = heading.find_all_next('span', {'class': 'mw-headline'})
 
-            n_subheadings = 0
+        #     n_subheadings = 0
 
-            subsections = []
+        #     subsections = []
 
-            def handle_subheadings():
-                nonlocal subheadings, n_subheadings, heading_index
+        #     def handle_subheadings():
+        #         nonlocal subheadings, n_subheadings, heading_index
 
-                for subheading in subheadings:
+        #         for subheading in subheadings:
 
-                    if subheading in heading_index:
-                        break
+        #             if subheading in heading_index:
+        #                 break
 
-                    # print('##', subheading.text)
-                    subsections.append(subheading)
-                    heading_index.add(subheading)
+        #             # print('##', subheading.text)
+        #             subsections.append(subheading)
+        #             heading_index.add(subheading)
 
-                    n_subheadings += 1
+        #             n_subheadings += 1
 
-            handle_subheadings()
+        #     handle_subheadings()
 
-            if n_subheadings < 1:
-                subheadings = heading.find_all_next('dt')
+        #     if n_subheadings < 1:
+        #         subheadings = heading.find_all_next('dt')
 
-                handle_subheadings()
+        #         handle_subheadings()
 
-            sections.append(Section(header = heading, elements = subsections))
+        #     sections.append(Section(header = heading, elements = subsections))
 
-        sections = sections[::-1]
+        # sections = sections[::-1]
+
+        sections = Section.from_separators(
+            separators = bs.select('h2 > span.mw-headline'),
+            find_next = lambda separator: separator.find_all_next('span', {'class': 'mw-headline'}),
+            find_next_exclusions = lambda separator: separator.find_all_next('dt')
+        )
 
         for section in sections:
             print('#', section.title)
