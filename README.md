@@ -13,7 +13,7 @@ League Of Legends data parser
 To call the module:
 
 ```sh
-python -m pale parse data
+python -m pale parse
 ```
 
 The command will generate file `assets/pale.tsv` with generated dataset.
