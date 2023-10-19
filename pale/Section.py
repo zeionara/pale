@@ -19,7 +19,7 @@ class Section:
         return tuple(normalize(element.text) for element in self.elements)
 
     @classmethod
-    def from_separators(cls, separators: [BeautifulSoup], find_next: callable, find_next_exclusions: callable = None):
+    def from_separators(cls, separators: [BeautifulSoup], find_next: callable, find_next_exclusions: callable = None, allow_duplicates: bool = False):
         sections = []
 
         heading_index = set()
@@ -33,14 +33,21 @@ class Section:
             n_subheadings = 0
 
             subsections = []
+            duplicates = []
 
             def handle_subheadings():
-                nonlocal subheadings, n_subheadings, heading_index, subsections
+                nonlocal subheadings, n_subheadings, heading_index, subsections, duplicates
 
                 for subheading in subheadings:
 
                     if subheading in heading_index:
-                        break
+                        duplicates.append(subheading)
+                        continue
+
+                    if len(duplicates) > 0:
+                        if allow_duplicates:
+                            subsections.extend(duplicates)
+                        duplicates = []
 
                     # print('##', subheading.text)
                     subsections.append(subheading)
@@ -50,11 +57,19 @@ class Section:
 
             handle_subheadings()
 
-            if find_next_exclusions is not None and n_subheadings < 1:
+            if find_next_exclusions is not None:
                 subheadings = find_next_exclusions(heading)
 
-                handle_subheadings()
+                if n_subheadings < 1:
+                    handle_subheadings()
+                else:
+                    for subheading in subheadings:
+                        heading_index.add(subheading)
 
             sections.append(cls(header = heading, elements = subsections))
 
         return sections[::-1]
+
+    @property
+    def length(self):
+        return len(self.elements)
