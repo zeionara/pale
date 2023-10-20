@@ -6,7 +6,8 @@ from click import group, argument
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
-from pandas import DataFrame
+from pandas import DataFrame, read_csv
+import numpy as np
 
 from .Section import Section
 from .Cache import Cache
@@ -23,9 +24,8 @@ INDEX_URL = 'https://leagueoflegends.fandom.com/wiki/League_of_Legends_Wiki'
 
 CACHE_PATH = 'assets/cache/{champion}.html'
 
-LINK_TEMPLATE = re.compile(r'\s*Link▶️\s*')
-
-TIMEOUT = 3600  # seconds
+SPACE = ' '
+LINK_TEMPLATE = re.compile(fr'\s*Link{SPACE}▶️\s*')
 
 
 @dataclass
@@ -39,12 +39,37 @@ class Record:
     @property
     def as_dict(self):
         return {
-            'header': normalize(self.header.text),
-            'subheader': None if self.subheader is None else normalize(self.subheader.text),
-            'text': normalize(LINK_TEMPLATE.sub('', self.item.text)),
+            'header': normalize(self.header.get_text(separator = SPACE)),
+            'subheader': None if self.subheader is None else normalize(self.subheader.get_text(separator = SPACE)),
+            'text': normalize(LINK_TEMPLATE.sub('', self.item.get_text(separator = SPACE))),
             'source': self.source['src'],
             'champion': self.champion
         }
+
+
+@main.command()
+@argument('path', type = str, default = 'assets/pale.tsv')
+def clean(path: str):
+    df = read_csv(path, sep = '\t')
+
+    # effects = df[~(df.text.str.contains('"'))].text
+
+    # for item in sorted(set(effects.to_list()), key = len, reverse = True):
+    #     print(item)
+
+    # effects = df[df.text.isna()]
+
+    # df['quote'] = df.text.str.contains('"')
+    df['quote'] = df.text.apply(lambda text: True if text.startswith('"') and text.endswith('"') else np.nan if '"' in text else False)
+    df.text = df.text.apply(lambda text: text[1:-1] if text.startswith('"') and text.endswith('"') else text)
+
+    df.to_csv('assets/annotated.tsv', sep = '\t', index = False)
+
+    df = df.dropna(subset = ['quote'])
+    df = df[df.quote]
+    df = df.drop(['quote', 'source'], axis = 1).drop_duplicates()
+
+    df.to_csv('assets/quotes.tsv', sep = '\t', index = False)
 
 
 @main.command()
@@ -133,7 +158,8 @@ def parse(path: str):
                         )
 
     df = DataFrame.from_records(record.as_dict for record in records)
-    df.to_csv('assets/pale.tsv', sep = '\t', index = False)
+    # print(df)
+    df.to_csv(path, sep = '\t', index = False)
 
 
 if __name__ == '__main__':
