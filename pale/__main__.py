@@ -41,7 +41,7 @@ class Record:
         return {
             'header': normalize(self.header.get_text(separator = SPACE)),
             'subheader': None if self.subheader is None else normalize(self.subheader.get_text(separator = SPACE)),
-            'text': normalize(LINK_TEMPLATE.sub('', self.item.get_text(separator = SPACE))),
+            'text': normalize(LINK_TEMPLATE.sub(SPACE, self.item.get_text(separator = SPACE))).strip(),
             'source': self.source['src'],
             'champion': self.champion
         }
