@@ -72,6 +72,7 @@ dependencies:
   - tk=8.6.12=h1ccaba5_0
   - toml=0.10.2=pyhd3eb1b0_0
   - tomlkit=0.11.1=py311h06a4308_0
+  - tqdm=4.65.0=py311h92b7b1e_0
   - tzdata=2023c=h04d1e81_0
   - ujson=5.4.0=py311h6a678d5_0
   - urllib3=1.26.16=py311h06a4308_0
