@@ -13,7 +13,7 @@ import numpy as np
 
 from .Section import Section
 from .Cache import Cache
-from .util import normalize, to_kebab_case, drop_non_alphanumeric
+from .util import normalize, to_kebab_case, drop_non_alphanumeric, drop_non_alphanumeric_or_space
 
 
 @group()
@@ -63,8 +63,8 @@ def pull_sound(path: str, output: str):
     stem_to_index = {}
 
     def make_sound_filename(row):
-        header = row['header']
-        subheader = row['subheader']
+        header = drop_non_alphanumeric_or_space(row['header'])
+        subheader = drop_non_alphanumeric_or_space(row['subheader'])
         champion = drop_non_alphanumeric(row['champion'])
 
         stem = None
