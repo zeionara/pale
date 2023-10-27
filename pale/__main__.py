@@ -1,17 +1,19 @@
 import re
+import os
 from dataclasses import dataclass
 from urllib.parse import quote
 
 from click import group, argument
 from bs4 import BeautifulSoup
 from tqdm import tqdm
+from requests import get
 
 from pandas import DataFrame, read_csv
 import numpy as np
 
 from .Section import Section
 from .Cache import Cache
-from .util import normalize
+from .util import normalize, to_kebab_case, drop_non_alphanumeric
 
 
 @group()
@@ -26,6 +28,8 @@ CACHE_PATH = 'assets/cache/{champion}.html'
 
 SPACE = ' '
 LINK_TEMPLATE = re.compile(fr'\s*Link{SPACE}▶️\s*')
+
+PATH = 'assets/pale.tsv'
 
 
 @dataclass
@@ -48,7 +52,82 @@ class Record:
 
 
 @main.command()
-@argument('path', type = str, default = 'assets/pale.tsv')
+@argument('path', type = str, default = PATH)
+@argument('output', type = str, default = 'assets/sound')
+def pull_sound(path: str, output: str):
+    if not os.path.isdir(output):
+        os.makedirs(output)
+
+    df = read_csv(path, sep = '\t')
+
+    stem_to_index = {}
+
+    def make_sound_filename(row):
+        header = row['header']
+        subheader = row['subheader']
+        champion = drop_non_alphanumeric(row['champion'])
+
+        stem = None
+        key = None
+
+        if subheader == subheader:  # if subheader is nan
+            stem = to_kebab_case(f'{header} {subheader}')
+            key = to_kebab_case(f'{champion} {header} {subheader}')
+        else:
+            stem = to_kebab_case(header)
+            key = to_kebab_case(f'{champion} {header}')
+
+        if (index := stem_to_index.get(key)):
+            stem_to_index[key] = index + 1
+            stem = f'{stem}-{index:03d}'
+        else:
+            stem_to_index[key] = 1
+            stem = f'{stem}-000'
+
+        return champion, stem
+
+    df['folder'], df['filename'] = zip(*df.apply(make_sound_filename, axis = 1))
+
+    # print(df)
+
+    pbar = tqdm(total = df.shape[0])
+
+    for _, row in df.iterrows():
+        folder = os.path.join(output, row['folder'])
+        source = row['source']
+
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+
+        file = os.path.join(folder, f'{row["filename"]}.ogg')
+
+        if os.path.isfile(file):
+            pbar.update()
+            continue
+
+        # print(file, source)
+
+        response = get(source)
+
+        # Check if the request was successful (status code 200)
+        if response.status_code == 200:
+            # Open the local file in binary write mode and write the downloaded content to it
+            with open(file, 'wb') as handle:
+                handle.write(response.content)
+        else:
+            print(f"Failed to download the file {source} as {file}. Status code: {response.status_code}")
+
+        pbar.update()
+
+    # print(max(stem_to_index.values()))
+
+    # print(sorted(stem_to_index.items(), key = lambda item: item[1], reverse = True)[:10])
+
+    # print(df.source.tolist())
+
+
+@main.command()
+@argument('path', type = str, default = PATH)
 def clean(path: str):
     df = read_csv(path, sep = '\t')
 
@@ -73,7 +152,7 @@ def clean(path: str):
 
 
 @main.command()
-@argument('path', type = str, default = 'assets/pale.tsv')
+@argument('path', type = str, default = PATH)
 def parse(path: str):
 
     champions = []
