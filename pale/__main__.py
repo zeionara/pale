@@ -2,13 +2,14 @@ import re
 import os
 from dataclasses import dataclass
 from urllib.parse import quote
+from pathlib import Path
 
-from click import group, argument
+from click import group, argument, option
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 from requests import get
 
-from pandas import DataFrame, read_csv
+from pandas import DataFrame, read_csv, NA
 import numpy as np
 
 from .Section import Section
@@ -30,6 +31,8 @@ SPACE = ' '
 LINK_TEMPLATE = re.compile(fr'\s*Link{SPACE}▶️\s*')
 
 PATH = 'assets/pale.tsv'
+SOUND_PATH = 'assets/sound'
+PULLED_PATH = 'assets/pulled.tsv'
 
 
 @dataclass
@@ -52,17 +55,54 @@ class Record:
 
 
 @main.command()
+@argument('path', type = str, default = PULLED_PATH)
+@argument('output', type = str, default = SOUND_PATH)
+@option('--delete', '-d', is_flag = True, help = 'delete all files which are not mentioned in the associated tsv file; if this flag is not set, then such files are only logged')
+def clean_sound(path: str, output: str, delete: bool):
+    df = read_csv(path, sep = '\t')
+
+    n_files = 0
+    n_deleted = 0
+
+    for folder in tqdm(os.listdir(output)):
+        for file in os.listdir(os.path.join(output, folder)):
+            n_files += 1
+
+            stem = Path(file).stem
+
+            if df[(df.folder == folder) & (df.filename == stem)].empty:
+                if delete:
+                    print('deleting', folder, stem)
+                    os.remove(os.path.join(output, folder, file))
+                    n_deleted += 1
+                else:
+                    print(folder, stem, 'can be deleted')
+
+    print(f'Checked {n_files} files, {n_deleted} deleted; {n_files - n_deleted} remaining')
+
+
+@main.command()
 @argument('path', type = str, default = PATH)
-@argument('output', type = str, default = 'assets/sound')
-def pull_sound(path: str, output: str):
+@argument('output', type = str, default = SOUND_PATH)
+@option(
+    '--finalize',
+    '-f',
+    is_flag = True,
+    help = 'this flag means, that sound files have been already pulled and the command is called merely to check which files are missing and generate the corresponding tsv'
+)
+@option('--pulled-path', '-p', type = str, default = PULLED_PATH)
+def pull_sound(path: str, output: str, finalize: bool, pulled_path: str):
     if not os.path.isdir(output):
         os.makedirs(output)
 
     df = read_csv(path, sep = '\t')
 
     stem_to_index = {}
+    n_missing = 0 if finalize else None
 
     def make_sound_filename(row):
+        nonlocal n_missing
+
         header = drop_non_alphanumeric_or_space(row['header'])
         subheader = drop_non_alphanumeric_or_space(row['subheader'])
         champion = drop_non_alphanumeric(row['champion'])
@@ -84,40 +124,51 @@ def pull_sound(path: str, output: str):
             stem_to_index[key] = 1
             stem = f'{stem}-000'
 
+        if finalize and not os.path.exists(os.path.join(output, champion, f'{stem}.ogg')):
+            n_missing += 1
+
+            return NA, NA
+
         return champion, stem
 
     df['folder'], df['filename'] = zip(*df.apply(make_sound_filename, axis = 1))
 
-    # print(df)
+    if finalize:
+        df.drop(columns = ['source'], inplace = True)
 
-    pbar = tqdm(total = df.shape[0])
+        print(f'Found {n_missing} missing sound files')
+        print(df)
 
-    for _, row in df.iterrows():
-        folder = os.path.join(output, row['folder'])
-        source = row['source']
+        df.to_csv(pulled_path, sep = '\t', index = False)
+    else:
+        pbar = tqdm(total = df.shape[0])
 
-        if not os.path.isdir(folder):
-            os.makedirs(folder)
+        for _, row in df.iterrows():
+            folder = os.path.join(output, row['folder'])
+            source = row['source']
 
-        file = os.path.join(folder, f'{row["filename"]}.ogg')
+            if not os.path.isdir(folder):
+                os.makedirs(folder)
 
-        if os.path.isfile(file):
+            file = os.path.join(folder, f'{row["filename"]}.ogg')
+
+            if os.path.isfile(file):
+                pbar.update()
+                continue
+
+            # print(file, source)
+
+            response = get(source)
+
+            # Check if the request was successful (status code 200)
+            if response.status_code == 200:
+                # Open the local file in binary write mode and write the downloaded content to it
+                with open(file, 'wb') as handle:
+                    handle.write(response.content)
+            else:
+                print(f"Failed to download the file {source} as {file}. Status code: {response.status_code}")
+
             pbar.update()
-            continue
-
-        # print(file, source)
-
-        response = get(source)
-
-        # Check if the request was successful (status code 200)
-        if response.status_code == 200:
-            # Open the local file in binary write mode and write the downloaded content to it
-            with open(file, 'wb') as handle:
-                handle.write(response.content)
-        else:
-            print(f"Failed to download the file {source} as {file}. Status code: {response.status_code}")
-
-        pbar.update()
 
     # print(max(stem_to_index.values()))
 
